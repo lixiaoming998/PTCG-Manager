@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTCG Manager - 宝可梦卡牌管理系统</title>
+    
+    <!-- 样式 -->
+    <style>
+        * { font-family: 'Nunito', 'Segoe UI', sans-serif; box-sizing: border-box; }
+        :root {
+            --primary: #FFCB05; --secondary: #3B4CCA; --accent: #FFCB05;
+            --background: #FFFDF5; --text: #333333; --cardBg: #FFFFFF;
+            --navBg: linear-gradient(135deg, #FFCB05 0%, #FF9500 100%);
+        }
+        body { background-color: var(--background); color: var(--text); margin: 0; min-height: 100vh; }
+        .nav-gradient { background: var(--navBg); }
+        .card-container { background: var(--cardBg); border: 3px solid #FFCB05; border-radius: 1rem; }
+        
+        .env-badge {
+            background: linear-gradient(135deg, #ffd700 0%, #ffb700 100%);
+            border: 2px solid #333; box-shadow: 2px 2px 0px rgba(0,0,0,0.2);
+            width: 40px; height: 40px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; position: absolute; top: -10px; right: -10px; z-index: 10;
+        }
+        
+        .type-badge {
+            padding: 2px 12px; border-radius: 12px; font-size: 11px;
+            font-weight: bold; color: white; box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+        }
+        
+        /* 输入框聚焦效果 */
+        input:focus, select:focus, textarea:focus {
+            border-color: #FFCB05 !important;
+            box-shadow: 0 0 0 3px rgba(255, 203, 5, 0.3) !important;
+            outline: none;
+        }
+        
+        /* 筛选标签动效 */
+        .filter-tag { transition: all 0.2s ease; cursor: pointer; }
+        .filter-tag:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .filter-tag.active {
+            background-color: #FFCB05 !important;
+            color: #333 !important; border-color: #FFCB05 !important;
+            font-weight: bold;
+        }
+    </style>
+    
+    <!-- 引入字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- CDN 依赖 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- 单文件应用逻辑 -->
+    <script type="text/babel">
+        const { useState, useEffect, createContext, useContext } = React;
+
+        // ================= 配置常量 =================
+        const TYPE_COLORS = {
+            '草': '#62B957', '火': '#EA7A3C', '水': '#539AE2', '雷': '#F6C747',
+            '超': '#7573D0', '斗': '#CB6A4D', '恶': '#5B5466', '钢': '#9FA8AD', 
+            '龙': '#0A6DC4', '无': '#B4B4B4'
+        };
+
+        const CONFIG = {
+            POKEMON_TYPES: ['草', '火', '水', '雷', '超', '斗', '恶', '钢', '龙', '无'],
+            CARD_TYPES: ['宝可梦', '支援者', '道具', '能量'],
+            RARITIES: ['C', 'U', 'R', 'RR', 'SR', 'SAR', 'UR', 'HR', 'CSR', 'PR', '其他'],
+            STAGES: ['基础', '1阶进化', '2阶进化', 'V进化', 'VMAX', 'VSTAR'],
+            ENVIRONMENTS: ['F', 'G', 'H', 'I']
+        };
+
+        const API_URL = 'http://127.0.0.1:5000/api';
+
+        // ================= API 封装 =================
+        const api = {
+            getCards: () => fetch(`${API_URL}/cards`).then(r => r.json()),
+            addCard: (card) => fetch(`${API_URL}/cards`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(card)}).then(r => r.json()),
+            updateCard: (id, card) => fetch(`${API_URL}/cards/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(card)}).then(r => r.json()),
+            deleteCard: (id) => fetch(`${API_URL}/cards/${id}`, { method: 'DELETE' }),
+            getThemes: () => fetch(`${API_URL}/themes`).then(r => r.json()),
+            setTheme: (id) => fetch(`${API_URL}/themes/current`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({themeId: id})}),
+            saveCustomTheme: (theme) => fetch(`${API_URL}/themes/custom`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(theme)})
+        };
+
+        // ================= 上下文 =================
+        const ThemeContext = createContext();
+
+        // ================= 子组件：卡牌项 =================
+        function CardItem({ card, onDelete, onEdit }) {
+            const typeColor = type => TYPE_COLORS[type] || '#888';
+            return (
+                <div className="card-container p-4 shadow-lg hover:shadow-xl transition-all relative">
+                    {card.environment && card.environment !== "未知" && (
+                        <div className="env-badge text-lg">{card.environment}</div>
+                    )}
+                    <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1 pr-4">
+                            <h3 className="font-bold text-lg leading-tight">{card.name}</h3>
+                            <div className="flex gap-2 mt-2 flex-wrap">
+                                <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs font-medium">{card.cardType}</span>
+                                <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs font-medium">{card.rarity}</span>
+                                {card.type && <span className="type-badge" style={{backgroundColor: typeColor(card.type)}}>{card.type}</span>}
+                            </div>
+                        </div>
+                        <span className="text-xs opacity-50 whitespace-nowrap">{card.loginDate}</span>
+                    </div>
+
+                    {card.cardType === '宝可梦' && (
+                        <div className="mt-3 pt-3 border-t border-dashed border-gray-200 text-sm grid grid-cols-2 gap-2">
+                            <div><span className="opacity-50">HP:</span> <span className="font-bold text-red-500">{card.hp || '-'}</span></div>
+                            <div><span className="opacity-50">进化:</span> {card.stage || '-'}</div>
+                            {card.weakness && <div className="col-span-2"><span className="opacity-50">弱点:</span> {card.weakness}</div>}
+                        </div>
+                    )}
+                    
+                    {(card.cardType === '支援者' || card.cardType === '道具') && card.effect && (
+                        <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
+                            <p className="text-xs opacity-70 italic">"{card.effect}"</p>
+                        </div>
+                    )}
+
+                    <div className="mt-4 flex gap-2">
+                        <button onClick={() => onEdit(card)} className="flex-1 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded font-medium">编辑</button>
+                        <button onClick={() => onDelete(card.id)} className="flex-1 py-1 text-sm text-red-500 hover:bg-red-50 rounded font-medium">删除</button>
+                    </div>
+                </div>
+            );
+        }
+
+        // ================= 子组件：表单 =================
+        function CardForm({ card, onSave, onCancel }) {
+            const [formData, setFormData] = useState(card || {
+                loginDate: new Date().toISOString().split('T')[0],
+                name: '', cardType: '宝可梦', rarity: 'R', environment: 'H',
+                type: '', hp: '', weakness: '', stage: '', effect: '', energyType: '基本能量'
+            });
+
+            const handleChange = (field, value) => {
+                let newFormData = { ...formData, [field]: value };
+                if (field === 'cardType' && value === '能量') newFormData.environment = '';
+                if (field === 'cardType' && value !== '能量' && !formData.environment) newFormData.environment = 'H';
+                setFormData(newFormData);
+            };
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!formData.name.trim()) return alert('请输入卡牌名称');
+                onSave(formData);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onCancel}>
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl my-8" onClick={e => e.stopPropagation()}>
+                        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                            <span className="text-2xl">🃏</span> {card ? '编辑卡牌' : '录入新卡'}
+                        </h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold opacity-50 mb-1 uppercase">卡牌名称 *</label>
+                                <input className="w-full p-2 border-2 rounded-lg outline-none" value={formData.name} onChange={e => handleChange('name', e.target.value)} placeholder="输入卡牌名称" autoFocus />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold opacity-50 mb-1">类型</label>
+                                    <select className="w-full p-2 border-2 rounded-lg bg-white" value={formData.cardType} onChange={e => handleChange('cardType', e.target.value)}>
+                                        {CONFIG.CARD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold opacity-50 mb-1">稀有度</label>
+                                    <select className="w-full p-2 border-2 rounded-lg bg-white" value={formData.rarity} onChange={e => handleChange('rarity', e.target.value)}>
+                                        {CONFIG.RARITIES.map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {formData.cardType !== '能量' && (
+                                <div className="bg-gray-50 p-3 rounded-lg">
+                                    <label className="block text-xs font-bold opacity-50 mb-2">环境标志</label>
+                                    <div className="flex gap-2">
+                                        {CONFIG.ENVIRONMENTS.map(env => (
+                                            <button key={env} type="button" onClick={() => handleChange('environment', env)}
+                                                className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all ${formData.environment === env ? 'env-badge text-white relative top-0 right-0' : 'bg-white border border-gray-300 hover:bg-gray-100'}`}>
+                                                {env}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-xs font-bold opacity-50 mb-1">登录日期</label>
+                                <input type="date" className="w-full p-2 border-2 rounded-lg" value={formData.loginDate} onChange={e => handleChange('loginDate', e.target.value)} />
+                            </div>
+
+                            {formData.cardType === '宝可梦' && (
+                                <div className="space-y-3 p-3 bg-red-50 rounded-lg border border-red-100">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs opacity-50 mb-1">属性</label>
+                                            <select className="w-full p-2 border rounded-lg bg-white text-sm" value={formData.type || ''} onChange={e => handleChange('type', e.target.value)}>
+                                                <option value="">选择</option>
+                                                {CONFIG.POKEMON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs opacity-50 mb-1">HP</label>
+                                            <input type="number" className="w-full p-2 border rounded-lg text-sm" value={formData.hp || ''} onChange={e => handleChange('hp', e.target.value)} />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs opacity-50 mb-1">进化</label>
+                                            <select className="w-full p-2 border rounded-lg bg-white text-sm" value={formData.stage || ''} onChange={e => handleChange('stage', e.target.value)}>
+                                                <option value="">选择</option>
+                                                {CONFIG.STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs opacity-50 mb-1">弱点</label>
+                                            <select className="w-full p-2 border rounded-lg bg-white text-sm" value={formData.weakness || ''} onChange={e => handleChange('weakness', e.target.value)}>
+                                                <option value="">选择</option>
+                                                {CONFIG.POKEMON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(formData.cardType === '支援者' || formData.cardType === '道具') && (
+                                <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+                                    <label className="block text-xs opacity-50 mb-1">效果/特性</label>
+                                    <textarea className="w-full p-2 border rounded-lg text-sm" value={formData.effect || ''} onChange={e => handleChange('effect', e.target.value)} rows="2" />
+                                </div>
+                            )}
+
+                            {formData.cardType === '能量' && (
+                                <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-100">
+                                    <label className="block text-xs opacity-50 mb-1">能量类型</label>
+                                    <div className="flex gap-2 mb-2">
+                                        {['基本能量', '特殊能量'].map(et => (
+                                            <button key={et} type="button" onClick={() => handleChange('energyType', et)}
+                                                className={`flex-1 p-2 rounded text-sm font-medium ${formData.energyType === et ? 'bg-yellow-400 text-white' : 'bg-white border'}`}>
+                                                {et}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {formData.energyType === '特殊能量' && (
+                                        <textarea className="w-full p-2 border rounded-lg text-sm" placeholder="特殊能量效果..." value={formData.effect || ''} onChange={e => handleChange('effect', e.target.value)} />
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={onCancel} className="flex-1 py-2 border-2 rounded-lg hover:bg-gray-50 font-bold">取消</button>
+                                <button type="submit" className="flex-1 py-2 bg-blue-500 text-white rounded-lg shadow font-bold hover:bg-blue-600">保存</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // ================= 子组件：筛选面板 =================
+        function FilterPanel({ filters, onFilterChange, stats }) {
+            return (
+                <div className="bg-white rounded-xl p-4 shadow-lg mb-6 space-y-4">
+                    <div>
+                        <div className="text-xs font-bold opacity-50 mb-2">环境</div>
+                        <div className="flex flex-wrap gap-2">
+                            <button onClick={() => onFilterChange('environment', 'all')} className={`filter-tag px-4 py-1.5 rounded-full text-sm font-medium border-2 ${filters.environment === 'all' ? 'active' : 'bg-white'}`}>全部</button>
+                            {CONFIG.ENVIRONMENTS.map(env => (
+                                <button key={env} onClick={() => onFilterChange('environment', env)} className={`filter-tag px-4 py-1.5 rounded-full text-sm font-medium border-2 ${filters.environment === env ? 'active' : 'bg-white'}`}>
+                                    {env} ({stats.env[env] || 0})
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-xs font-bold opacity-50 mb-2">卡牌类型</div>
+                        <div className="flex flex-wrap gap-2">
+                            {['全部', ...CONFIG.CARD_TYPES].map(type => (
+                                <button key={type} onClick={() => onFilterChange('cardType', type === '全部' ? 'all' : type)} className={`filter-tag px-4 py-1.5 rounded-full text-sm font-medium border-2 ${filters.cardType === (type === '全部' ? 'all' : type) ? 'active' : 'bg-white'}`}>{type}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-xs font-bold opacity-50 mb-2">属性</div>
+                        <div className="flex flex-wrap gap-2">
+                            <button onClick={() => onFilterChange('type', 'all')} className={`filter-tag px-4 py-1.5 rounded-full text-sm font-medium border-2 ${filters.type === 'all' ? 'active' : 'bg-white'}`}>全部</button>
+                            {CONFIG.POKEMON_TYPES.map(type => (
+                                <button key={type} onClick={() => onFilterChange('type', type)} className={`filter-tag px-4 py-1.5 rounded-full text-sm font-medium border-2 ${filters.type === type ? 'active' : 'bg-white'}`}>{type}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-xs font-bold opacity-50 mb-2">稀有度</div>
+                        <div className="flex flex-wrap gap-2">
+                            <button onClick={() => onFilterChange('rarity', 'all')} className={`filter-tag px-4 py-1.5 rounded-full text-sm font-medium border-2 ${filters.rarity === 'all' ? 'active' : 'bg-white'}`}>全部</button>
+                            {CONFIG.RARITIES.slice(0, 8).map(rarity => (
+                                <button key={rarity} onClick={() => onFilterChange('rarity', rarity)} className={`filter-tag px-4 py-1.5 rounded-full text-sm font-medium border-2 ${filters.rarity === rarity ? 'active' : 'bg-white'}`}>{rarity}</button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ================= 子组件：统计面板 =================
+        function StatsPanel({ cards }) {
+            const stats = {
+                total: cards.length,
+                pokemon: cards.filter(c => c.cardType === '宝可梦').length,
+                supporter: cards.filter(c => c.cardType === '支援者').length,
+                item: cards.filter(c => c.cardType === '道具').length,
+                energy: cards.filter(c => c.cardType === '能量').length
+            };
+
+            return (
+                <div className="grid grid-cols-5 gap-3 mb-6">
+                    <div className="bg-white rounded-xl p-3 text-center shadow"><div className="text-3xl font-bold text-blue-600">{stats.total}</div><div className="text-xs opacity-50">总计</div></div>
+                    <div className="bg-white rounded-xl p-3 text-center shadow"><div className="text-3xl font-bold text-red-500">{stats.pokemon}</div><div className="text-xs opacity-50">宝可梦</div></div>
+                    <div className="bg-white rounded-xl p-3 text-center shadow"><div className="text-3xl font-bold text-purple-500">{stats.supporter}</div><div className="text-xs opacity-50">支援者</div></div>
+                    <div className="bg-white rounded-xl p-3 text-center shadow"><div className="text-3xl font-bold text-cyan-500">{stats.item}</div><div className="text-xs opacity-50">道具</div></div>
+                    <div className="bg-white rounded-xl p-3 text-center shadow"><div className="text-3xl font-bold text-yellow-500">{stats.energy}</div><div className="text-xs opacity-50">能量</div></div>
+                </div>
+            );
+        }
+
+        // ================= 子组件：主题编辑器 =================
+        function ThemeEditor({ onClose }) {
+            const { themes, setTheme } = useContext(ThemeContext);
+            const [customColors, setCustomColors] = useState({
+                primary: '#FFCB05', secondary: '#FF9500', accent: '#FFCB05',
+                background: '#FFF9E6', text: '#333333', cardBg: '#FFFFFF'
+            });
+
+            const handleSelectTheme = async (themeId) => {
+                await api.setTheme(themeId);
+                setTheme(themeId);
+                onClose();
+            };
+
+            const handleSaveCustom = async () => {
+                await api.saveCustomTheme(customColors);
+                await api.setTheme('custom');
+                setTheme('custom');
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold">🎨 主题设置</h2>
+                            <button onClick={onClose} className="text-2xl opacity-50 hover:opacity-100">×</button>
+                        </div>
+                        <div className="mb-8">
+                            <h3 className="text-sm font-bold opacity-50 mb-3">预设主题</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {Object.entries(themes?.themes || {}).filter(([id]) => id !== 'custom').map(([id, theme]) => (
+                                    <button key={id} onClick={() => handleSelectTheme(id)} className={`p-4 rounded-xl border-2 transition-all hover:scale-105 ${themes?.current === id ? 'border-4 border-blue-500' : 'border-gray-200'}`} style={{background: theme.navBg}}>
+                                        <div className="text-white font-bold text-sm mb-2">{theme.name}</div>
+                                        <div className="flex gap-1"><div className="w-6 h-6 rounded" style={{backgroundColor: theme.primary}}></div><div className="w-6 h-6 rounded" style={{backgroundColor: theme.secondary}}></div><div className="w-6 h-6 rounded" style={{backgroundColor: theme.accent}}></div></div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold opacity-50 mb-3">自定义主题</h3>
+                            <div className="space-y-4 bg-gray-50 p-4 rounded-xl">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                    {Object.entries(customColors).map(([key, value]) => (
+                                        <div key={key}>
+                                            <label className="block text-xs opacity-50 mb-1">{key}</label>
+                                            <input type="color" value={value} onChange={e => setCustomColors({...customColors, [key]: e.target.value})} className="w-full h-10 rounded cursor-pointer" />
+                                        </div>
+                                    ))}
+                                </div>
+                                <button onClick={handleSaveCustom} className="w-full py-2 bg-blue-500 text-white rounded-lg font-bold hover:bg-blue-600">应用自定义主题</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ================= 主应用 App =================
+        function App() {
+            const [cards, setCards] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showForm, setShowForm] = useState(false);
+            const [editCard, setEditCard] = useState(null);
+            const [showThemeEditor, setShowThemeEditor] = useState(false);
+            const [themes, setThemes] = useState(null);
+            const [search, setSearch] = useState('');
+            const [filters, setFilters] = useState({ environment: 'all', cardType: 'all', type: 'all', rarity: 'all' });
+
+            useEffect(() => {
+                api.getThemes().then(data => {
+                    setThemes(data);
+                    applyTheme(data.themes[data.current]);
+                });
+            }, []);
+
+            useEffect(() => {
+                api.getCards().then(data => {
+                    setCards(data);
+                    setLoading(false);
+                });
+            }, []);
+
+            const applyTheme = (theme) => {
+                if (!theme) return;
+                const root = document.documentElement;
+                root.style.setProperty('--primary', theme.primary);
+                root.style.setProperty('--secondary', theme.secondary);
+                root.style.setProperty('--accent', theme.accent);
+                root.style.setProperty('--background', theme.background);
+                root.style.setProperty('--text', theme.text);
+                root.style.setProperty('--cardBg', theme.cardBg);
+                root.style.setProperty('--navBg', theme.navBg);
+            };
+
+            const setTheme = (themeId) => {
+                const theme = themes.themes[themeId];
+                setThemes({...themes, current: themeId});
+                applyTheme(theme);
+            };
+
+            const handleSave = async (cardData) => {
+                if (cardData.id) await api.updateCard(cardData.id, cardData);
+                else await api.addCard(cardData);
+                const data = await api.getCards();
+                setCards(data);
+                setShowForm(false);
+                setEditCard(null);
+            };
+
+            const handleDelete = async (id) => {
+                if (!confirm('确定删除？')) return;
+                await api.deleteCard(id);
+                const data = await api.getCards();
+                setCards(data);
+            };
+
+            const handleEdit = (card) => { setEditCard(card); setShowForm(true); };
+            const handleFilterChange = (key, value) => { setFilters({...filters, [key]: value}); };
+
+            const filteredCards = cards.filter(card => {
+                const matchSearch = card.name.toLowerCase().includes(search.toLowerCase());
+                const matchEnv = filters.environment === 'all' || card.environment === filters.environment;
+                const matchType = filters.cardType === 'all' || card.cardType === filters.cardType;
+                const matchPokemonType = filters.type === 'all' || card.type === filters.type;
+                const matchRarity = filters.rarity === 'all' || card.rarity === filters.rarity;
+                return matchSearch && matchEnv && matchType && matchPokemonType && matchRarity;
+            });
+
+            const filterStats = {
+                env: CONFIG.ENVIRONMENTS.reduce((acc, env) => {
+                    acc[env] = cards.filter(c => c.environment === env).length;
+                    return acc;
+                }, {})
+            };
+
+            if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-center text-2xl">🃏 加载中...</div></div>;
+
+            return (
+                <ThemeContext.Provider value={{ themes, setTheme }}>
+                    <div className="min-h-screen pb-20">
+                        <nav className="nav-gradient text-white p-4 shadow-lg sticky top-0 z-40">
+                            <div className="max-w-6xl mx-auto flex justify-between items-center">
+                                <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                                    <span className="bg-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-mono text-red-500 font-bold">P</span>
+                                    PTCG Manager
+                                </h1>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setShowThemeEditor(true)} className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 font-medium text-sm backdrop-blur">🎨 主题</button>
+                                    <button onClick={() => { setEditCard(null); setShowForm(true); }} className="px-4 py-2 rounded-lg bg-white text-red-500 font-bold hover:bg-gray-100 text-sm shadow">+ 新增</button>
+                                </div>
+                            </div>
+                        </nav>
+
+                        <div className="max-w-6xl mx-auto p-4 md:p-8">
+                            <StatsPanel cards={cards} />
+                            <div className="mb-4">
+                                <input type="text" placeholder="🔍 搜索卡牌名称..." className="w-full p-3 border-2 rounded-xl outline-none bg-white shadow" value={search} onChange={e => setSearch(e.target.value)} />
+                            </div>
+                            <FilterPanel filters={filters} onFilterChange={handleFilterChange} stats={filterStats} />
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {filteredCards.map(card => <CardItem key={card.id} card={card} onDelete={handleDelete} onEdit={handleEdit} />)}
+                            </div>
+                            {filteredCards.length === 0 && <div className="text-center py-20 opacity-50"><div className="text-6xl mb-4">🃏</div><p>没有找到匹配的卡牌</p></div>}
+                        </div>
+
+                        {showForm && <CardForm card={editCard} onSave={handleSave} onCancel={() => { setShowForm(false); setEditCard(null); }} />}
+                        {showThemeEditor && <ThemeEditor onClose={() => setShowThemeEditor(false)} />}
+                    </div>
+                </ThemeContext.Provider>
+            );
+        }
+
+        // 渲染
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

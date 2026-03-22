@@ -1,0 +1,65 @@
+{
+  "current": "eevee",
+  "themes": {
+    "pikachu": {
+      "name": "皮卡丘黄",
+      "primary": "#FFCB05",
+      "secondary": "#FF0000",
+      "accent": "#FFCB05",
+      "background": "#FFF9E6",
+      "text": "#333333",
+      "cardBg": "#FFFFFF",
+      "navBg": "linear-gradient(135deg, #FFCB05 0%, #FF9500 100%)"
+    },
+    "pokeball": {
+      "name": "精灵球红",
+      "primary": "#FF0000",
+      "secondary": "#FFFFFF",
+      "accent": "#333333",
+      "background": "#FFF0F0",
+      "text": "#333333",
+      "cardBg": "#FFFFFF",
+      "navBg": "linear-gradient(135deg, #FF0000 0%, #CC0000 100%)"
+    },
+    "mewtwo": {
+      "name": "超梦紫",
+      "primary": "#9B59B6",
+      "secondary": "#8E44AD",
+      "accent": "#D5A6E6",
+      "background": "#F5E6FF",
+      "text": "#333333",
+      "cardBg": "#FFFFFF",
+      "navBg": "linear-gradient(135deg, #9B59B6 0%, #8E44AD 100%)"
+    },
+    "greninja": {
+      "name": "甲贺忍蛙蓝",
+      "primary": "#3498DB",
+      "secondary": "#2980B9",
+      "accent": "#5DADE2",
+      "background": "#E6F7FF",
+      "text": "#333333",
+      "cardBg": "#FFFFFF",
+      "navBg": "linear-gradient(135deg, #3498DB 0%, #2980B9 100%)"
+    },
+    "eevee": {
+      "name": "伊布棕",
+      "primary": "#D68E8E",
+      "secondary": "#C47D7D",
+      "accent": "#EAB0B0",
+      "background": "#FFF5E6",
+      "text": "#333333",
+      "cardBg": "#FFFFFF",
+      "navBg": "linear-gradient(135deg, #D68E8E 0%, #C47D7D 100%)"
+    },
+    "dark": {
+      "name": "暗夜模式",
+      "primary": "#2C3E50",
+      "secondary": "#34495E",
+      "accent": "#3498DB",
+      "background": "#1A1A2E",
+      "text": "#EAEAEA",
+      "cardBg": "#16213E",
+      "navBg": "linear-gradient(135deg, #2C3E50 0%, #34495E 100%)"
+    }
+  }
+}

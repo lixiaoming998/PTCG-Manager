@@ -1,2 +1,22 @@
-# PTCG-Manager
-一个关于PTCG，宝可梦集换式卡牌游戏的卡牌管理程序。A card management program for PTCG, the Pokémon Trading Card Game.
+# PTCG Manager (宝可梦卡牌管理系统)
+
+一个基于 Flask + React 的宝可梦卡牌收集管理系统，用于记录和管理你的 PTCG 卡牌收藏。
+
+## ✨ 功能特性
+
+- **卡牌管理**: 支持录入、编辑、删除卡牌信息。
+- **多维筛选**: 支持按环境、类型、属性、稀有度进行筛选。
+- **数据统计**: 实时统计各类卡牌数量。
+- **主题切换**: 支持多种预设主题及自定义主题颜色。
+- **本地存储**: 数据存储在本地 JSON 文件中，无需数据库配置。
+
+## 🛠️ 技术栈
+
+- **后端**: Python Flask
+- **前端**: React (CDN 引入), Tailwind CSS
+- **数据存储**: JSON 文件
+
+## 🚀 快速开始
+
+### 1. 克隆项目
+
